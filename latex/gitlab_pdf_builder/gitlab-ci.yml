@@ -1,0 +1,13 @@
+stages:
+        - build
+build:
+        stage: build
+        image: archlinux/base
+        script:
+                - pacman -Syu --noconfirm texlive-most
+                - chmod +x run.sh
+                - ./run.sh 
+        artifacts:
+                paths:
+                        - ./*.pdf
+                expire_in: 1 week
