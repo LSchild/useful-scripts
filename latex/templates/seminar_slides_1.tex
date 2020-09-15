@@ -1,0 +1,710 @@
+\documentclass[lualatex, 9pt,serif]{beamer}
+\usepackage{minted}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{verbatim}
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage[notransparent]{svg}
+\usepackage{tikz}
+\usepackage{comment}
+\usepackage{caption}
+\usepackage[T1]{fontenc}
+\usepackage{concrete}
+\usepackage{color}
+\usepackage{babel}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{caption}
+\usepackage[usestackEOL]{stackengine}
+
+\usepackage[euler-digits]{eulervm}
+
+
+\usetikzlibrary{shadows,positioning,calc}
+
+\newcommand{\Dec}{\mathbf{Dec}}
+\newcommand{\Enc}{\mathbf{Enc}}
+\newcommand{\Flatten}{\mathbf{Flatten}}
+\newcommand{\BitDecomp}{\mathbf{BitDecomp}}
+\newcommand{\PowersOf}{\mathbf{PowersOf2}}
+\newcommand{\BitDecompI}{\mathbf{BitDecomp^{-1}}}
+
+\newcommand{\red}[1]{
+\ifmmode \text{\textcolor{red}{#1}}
+\else \textcolor{red}{#1}
+\fi
+}
+
+\newcommand{\blue}[1]{
+	\ifmmode \text{\textcolor{blue}{#1}}
+	\else \textcolor{blue}{#1}
+	\fi
+}
+
+
+
+\title[GSW13 \& TFHE]{The GSW13 encryption scheme and TFHE library}
+\author{Leonard Schild}
+
+\date[ATMC]{04.07.2019}
+\usetheme{Frankfurt}
+\usecolortheme{beaver}
+%\beamertemplatenavigationsymbolsempty
+
+\renewcommand{\thempfootnote}{\arabic{mpfootnote}}
+
+%\AtBeginSection{\frame{\sectionpage}}
+
+\newenvironment{cframe}[1]{
+\begin{frame}
+\frametitle{#1} } 
+{
+\end{frame}
+}
+
+\bibliographystyle{alpha}
+\setcounter{tocdepth}{5}
+
+\begin{document}
+	
+	\tikzset{
+		invisible/.style={opacity=0},
+		visible on/.style={alt={#1{}{invisible}}},
+		alt/.code args={<#1>#2#3}{%
+			\alt<#1>{\pgfkeysalso{#2}}{\pgfkeysalso{#3}} % \pgfkeysalso doesn't change the path
+		},
+	}
+	
+\frame{\titlepage}
+\frame{\frametitle{Table of Contents}\tableofcontents 
+     }
+%\section*{Introduction}
+\section{Motivation}
+
+\subsection[Uses of HE]{}
+\begin{cframe}{Why use Homomorphic Encryption}
+		\begin{tikzpicture}
+		\node[draw=none,fill=none,align=center,visible on=<1-2>] (public) at (0,0) {Public parameters:\\$pk_A,pk_S$};
+		
+		% Alice
+		\node[inner sep=0pt] (alice) at (-2.5, 0) {\includesvg[width=0.1\textwidth]{graphics/hospital}} ;
+		\draw[thick] (-2.5,-1) -- ++(0, -4.5);
+		
+		%1
+		\node[draw=none,fill=none,anchor=east,visible on=<1-2>] at ($(alice) + (0,-1.5)$) {$c_i \leftarrow Enc_{pk_S}(m_i)$};
+		\node[draw=none,fill=none,anchor=east,visible on=<1-2>] at ($(alice) + (0,-5)$) {$y \leftarrow Dec_{sk_A}(y^*)$};
+		
+		
+		% Server
+		\node[inner sep=0pt] (server) at (2.5, 0) {\includesvg[width=0.1\textwidth]{graphics/server}} ;
+		\draw[thick] (2.5,-1) -- ++(0, -4.5);
+		%1
+		\node[draw=none,fill=none,anchor=west,visible on=<1>] at ($(server) + (0,-2.8)$) {$m_i \leftarrow Dec_{sk_S}(c_i)$};
+		\node[draw=none,fill=none,anchor=west,visible on=<2>] at ($(server) + (0,-2.8)$) {\textcolor{red}{$m_i\leftarrow Dec_{sk_S}(c_i)$}};
+		\node[draw=none,fill=none,anchor=west,visible on=<1-2>] at ($(server) + (0,-3.3)$) {$t \leftarrow f(m_0,...,m_n)$};
+		\node[draw=none,fill=none,anchor=west,visible on=<1-2>] at ($(server) + (0,-3.8)$) {$y^* \leftarrow Enc_{pk_A}(t)$};
+		%1
+		\draw[->,thick,visible on=<1-2>] ($(alice)+(0,-2.1)$) -- ($(server)+(0,-2.3)$) node [pos=0.5,above,font=\small] {$c_0,...,c_n, f$};
+		\draw[->,thick,visible on=<3->] ($(alice)+(0,-2.1)$) -- ($(server)+(0,-2.3)$) node [pos=0.5,above,font=\small] {$c_0,...,c_n, F$};
+		\draw[<-,thick,visible on=<1-2>] ($(alice)+(0,-4.5)$) -- ($(server)+(0,-4.3)$) node [pos=0.5,above,font=\small] {$y^*$};
+		
+		% Alice 2
+		\node[draw=none,fill=none,anchor=east,visible on=<3->] at ($(alice) + (0,-1.2)$) {$sk \leftarrow Keygen()$};
+		\node[draw=none,fill=none,anchor=east,visible on=<3->] at ($(alice) + (0,-2)$) {$c_i \leftarrow Enc_{sk}(m_i)$};
+		\node[draw=none,fill=none,anchor=east,visible on=<3->] at ($(alice) + (0,-4)$) {$y \leftarrow Dec_{sk}(y^*)$};
+		
+		
+		% Server 2
+		\node[inner sep=0pt, visible on=<2-4>] at (2.12, 0.38) {\includesvg[width=0.07\textwidth]{graphics/search}} ;
+		\node[draw=none,fill=none,anchor=west,visible on=<3-4>] at ($(server) + (0,-3)$) {$y^* \leftarrow Eval(F,c_0,...,c_n)$};
+		
+		% 2
+		\draw[<-,thick,visible on=<3-4>] ($(alice)+(0,-3.7)$) -- ($(server)+(0,-3.5)$) node [pos=0.5,above,font=\small] {$y^*$};
+		
+		\node[draw,fill=white,align=center,visible on=<4>] (homo) at (0,-5) {$Dec_{sk}(Eval(F,c_0,...,c_n)) = f(m_0,...,m_n)$};
+		
+		\end{tikzpicture}
+	
+\end{cframe}
+
+\begin{cframe}{Other Applications}
+	\captionsetup{justification=centering}
+	\begin{columns}[c]
+		\column{.5\textwidth}
+		\begin{center}
+		\visible<2->{\includesvg[width=0.3\textwidth]{graphics/hash} 
+		\captionof*{figure}{\cite{lipmaa2005oblivious}\\ Oblivious Transfer }}
+		\visible<4->{\vspace*{0.5cm} \includesvg[width=0.3\textwidth]{graphics/ai}
+		\captionof*{figure}{\cite{bourse2018fast, carpovprivacy}\\ Privacy preserving ML}}
+		\end{center}
+		\column{.5\textwidth}
+		\begin{center}
+		\visible<3->{\includesvg[width=0.3\textwidth]{graphics/election}
+		\captionof*{figure}{\cite{chillotti2016homomorphic}\\ Electronic Voting}}
+		\visible<4->{\vspace*{0.5cm} \includesvg[width=0.3\textwidth]{graphics/gene}
+		\captionof*{figure}{\cite{kim2015private}\\ Genomics}}
+		\end{center}
+	\end{columns}
+\end{cframe}
+
+\subsection[Problems of HE]{}
+\begin{cframe}{Shortcomings of Homomorphic Encryption}
+	\begin{tikzpicture}
+	
+	% Alice
+	\node[inner sep=0pt] (alice) at (-2.5, 0) {\includesvg[width=0.1\textwidth]{graphics/hospital}} ;
+	\draw[thick] (-2.5,-1) -- ++(0, -4.5);
+	
+	% Server
+	\node[inner sep=0pt] (server) at (2.5, 0) {\includesvg[width=0.1\textwidth]{graphics/server}} ;
+	\draw[thick] (2.5,-1) -- ++(0, -4.5);
+	
+	% Alice 2
+	\node[draw=none,fill=none,anchor=east,visible on=<{1,3}>] at ($(alice) + (0,-1.2)$) {$sk \leftarrow Keygen()$};
+	\node[draw=none,fill=none,anchor=east,visible on=<2>] at ($(alice) + (0,-1.2)$) {$sk,\text{\textcolor{red}{$ek$}} \leftarrow Keygen()$};
+	
+	\node[draw=none,fill=none,anchor=east,visible on=<1-3>] at ($(alice) + (0,-2)$) {$c_i \leftarrow Enc_{sk}(m_i)$};
+	\node[draw=none,fill=none,anchor=east,visible on=<1-3>] at ($(alice) + (0,-4)$) {$y \leftarrow Dec_{sk}(y)$};
+	
+	
+	% Server 2
+	\node[inner sep=0pt, visible on=<1-3>] at (2.12, 0.38) {\includesvg[width=0.07\textwidth]{graphics/search}} ;
+	\node[draw=none,fill=none,anchor=west,visible on=<1>] at ($(server) + (0,-3)$) {$y^* \leftarrow f(c_0,...,c_n)$};
+	\node[draw=none,fill=none,anchor=west,visible on=<2>] at ($(server) + (0,-3)$) {$y^* \leftarrow Eval(F,\red{ek},c_0,...,c_n)$};
+	\node[draw=none,fill=none,anchor=west,visible on=<3>,align=left] at ($(server) + (0,-3)$) {$y_0 \leftarrow Eval(F,c_0,...,c_n)$ \\ {$y^* \leftarrow Eval(\red{T},y_0)$}};
+	
+	% 2
+	\draw[->,thick,visible on=<1>] ($(alice)+(0,-2.3)$) -- ($(server)+(0,-2.5)$) node [pos=0.5,above,font=\small] {$c_0,...,c_n, F$};
+	\draw[->,thick,visible on=<2>] ($(alice)+(0,-2.3)$) -- ($(server)+(0,-2.5)$) node [pos=0.5,above,font=\small] {$c_0,...,c_n, F, \text{\textcolor{red}{$ek$}}$};
+	\draw[->,thick,visible on=<3>] ($(alice)+(0,-2.3)$) -- ($(server)+(0,-2.5)$) node [pos=0.5,above,font=\small] {$c_0,...,c_n, F, \text{\textcolor{red}{$T$}}$};
+	\draw[<-,thick,visible on=<1-3>] ($(alice)+(0,-3.7)$) -- ($(server)+(0,-3.5)$) node [pos=0.5,above,font=\small] {$y^*$};
+	
+	\end{tikzpicture}
+\end{cframe}
+
+\begin{cframe}{Shortcomings Homomorphic Encryption (cont.)}
+	Major problems: Noise, due to problem base, and ciphertext growth, caused by unnatural homomorphisms. 
+	\visible<2->{\\[0.3cm]Solutions:
+		\begin{itemize}
+			\item<3-> \cite{gentry2009fully} Bootstrapping: Run ciphertext through decryption circuit. \begin{itemize}
+				\item<6-> \red{Requires circular security.}
+				\item<6-> \red{Can be quite slow.}
+			\end{itemize}
+			\item<4-> \cite{brakerski2014efficient} Relinearization: Transform ciphertext using matrix \begin{itemize}
+				\item<7-> \red{Keys can get quite large > 1Gb}
+				\item<7-> \red{Adds an $O(n^3)$ complexity factor.} 
+			\end{itemize}
+			\item<5-> \cite{brakerski2014efficient} Modulus switching: Shrink ciphertext to reduce noise \begin{itemize}
+				\item<8-> \red{Requires modulo chain.}
+				\item<8-> \red{Only a partial solution.}
+			\end{itemize}
+			
+		\end{itemize}
+	}
+	\vfill
+\end{cframe}
+
+\begin{cframe}{Bootstrapping: Intuition}
+	\begin{overprint}
+	Given a public key LHE, we require
+	\onslide<1->{
+	\begin{itemize}
+		\item<2-> Circular Security.
+		\item<3-> The ability to evaluate decryption circuit + 1 NAND gate.
+		\item<4-> An encryption $sk_{pk}$ of the secret key.\\[0.4cm]
+	\end{itemize}
+}
+	\onslide<5->{To refresh a ciphertext $C$, set $C^* \leftarrow Enc_{pk}(C)$:}
+	\onslide<6->{\begin{align*}
+		\blue{C' \leftarrow Eval(Circ_{Dec}, sk_{pk}, C^*)}
+	\end{align*}}
+	\onslide<7->{Proof:
+	\begin{align*}
+		Eval(Circ_{Dec}, sk_{pk}, C^*) \visible<8->{&= Enc_{pk}(Dec_{sk}(C)) \\}
+									\visible<9->{&= Enc_{pk}(Dec_{sk}(Enc_{pk}(m)) \\}
+									\visible<10->{&= Enc_{pk}(m)}
+	\end{align*}}
+	\onslide<11->{
+	Thus, \blue{$Dec_{sk}(C') = Dec_{sk}(C)$}}
+\end{overprint}
+\end{cframe}
+
+%\section*{Prerequisites}
+
+\section{GSW13}
+
+\begin{frame}
+
+\centering
+\begin{beamercolorbox}[sep=8pt,center]{section title}
+	\usebeamerfont{section title}\insertsection\par
+\end{beamercolorbox}
+
+\end{frame}
+\subsection[About]{}
+\begin{cframe}{About}
+	
+	\begin{center}
+		Homomorphic Encryption from Learning with Errors: \\
+		Conceptually-Simpler, Asymptotically-Faster, Attribute-Based
+	\end{center}
+	
+	\begin{figure}[!htb]
+		\begin{minipage}{0.3\textwidth}
+			\centering
+			\includegraphics[width=0.5\linewidth]{graphics/gentry} 
+			\caption*{Craig Gentry}
+		\end{minipage}\hfill
+		\begin{minipage}{0.3\textwidth}
+			\centering
+			\includegraphics[width=0.5\linewidth]{graphics/sahai}
+			\caption*{Amit Sahai}
+		\end{minipage}\hfill
+		\begin{minipage}{0.3\textwidth}
+			\centering
+			\includegraphics[width=0.5\linewidth]{graphics/waters}
+			\caption*{Brent Waters}
+		\end{minipage}
+	\end{figure}
+	
+	\begin{itemize}
+		\item<2-> Published in June 2013.
+		\item<3-> Optimized in many other papers: \cite{ducas2015fhew}, \cite{chillotti2016faster},...
+		\item<4-> Main contribution: simple and fast FHE.
+	\end{itemize}
+	
+\end{cframe}
+
+\begin{frame}
+\only<1-3>{
+	\frametitle{Learning with Errors: Intuition}
+	
+	\begin{align*}
+	14s_1 + 15s_2 + 5s_3 + 2s_4 &\approx 2 \pmod{17} \\
+	13s_1+14s_2+14s_3+6s_4 &\approx 16 \pmod{17} \\
+	6s_1+10s_2+13s_3+1s_4 &\approx 3 \pmod{17} \\
+	10s_1+4s_2+12s_3+16s_4 &\approx 12 \pmod{17} \\
+	\end{align*}
+	\vspace*{-1cm}
+	\visible<2-> {
+		\begin{align*}\Updownarrow\end{align*}
+		
+		$$
+		\begin{pmatrix}
+		14 & 15 & 5 & 2 \\
+		13 & 14 & 14 & 6 \\
+		6 & 10 & 13 & 1 \\
+		10 & 4 & 12 & 16	
+		\end{pmatrix}
+		\vec{s} + \vec{e} =
+		\left(
+		\begin{array}{c}
+		2 \\
+		16 \\
+		3 \\
+		12
+		\end{array}
+		\right) \pmod{17}
+		$$
+		
+	}
+	\vfill
+	\begin{center}
+		\visible<3-3>{Find $\vec{s} = (s_1,s_2,s_3,s_4)^T$}
+	\end{center}
+}
+
+\only<4-4>{
+	\frametitle{Learning with Errors: Definition}
+	
+	Introduced by Oded Regev \cite{Regev:2005}. (Quantum) Reduction to GapSVP.
+	
+	\begin{definition}[Decisional LWE]
+		Let $\lambda$ be the security parameter, $n = n(\lambda)$ an integer dimension, $q = q(\lambda) \geq 2$
+		an integer modulus and $\chi = \chi(\lambda)$ a distribution over $\mathbb{Z}$.
+		The LWE$_{n,q,\chi}$ problem is to distinguish the following two distribution: In the
+		first distribution, one samples \blue{$(\vec{a}_i, b_i) \in \mathbb{Z}^{n+1}_q$}. In the second distribution, one first draws \red{$\vec{s} \leftarrow \mathbb{Z}^n_q$} uniformly and then samples \blue{$(\vec{a}_i, b_i) \in \mathbb{Z}^{n+1}_q$} by sampling $\vec{a}_i \leftarrow \mathbb{Z}^{n}_q$ uniformly, $e_i \leftarrow \chi$, and setting \blue{$b_i \leftarrow \langle \vec{a}_i, \vec{s}\rangle + e_i$}.
+	\end{definition}
+	
+	\begin{definition}[Search LWE]
+		Given access to an oracle for the latter distribution, find $s$
+	\end{definition}
+}
+\only<5->{
+	\frametitle{R-LWE}
+	\begin{overprint}
+		\onslide<5->{In practice: Instead $\mathbb{Z}^n_q$ use rings of the form $\mathbb{Z}[x]/(x^n + 1)$ where $n = 2^q, q\in \mathbb{N}$ (i.e. Factor rings of polynomial rings) \\[0.5cm]	
+			\centerline{$\Rightarrow$ \textbf{Ring-LWE}}\\[0.2cm]}
+		
+		\onslide<6->{
+			\begin{center}
+				\includegraphics[width=0.6\textwidth,keepaspectratio]{graphics/dont}
+			\end{center}	
+			
+			Further reading: \textcolor{blue}{\url{https://cims.nyu.edu/~regev/papers/lwesurvey.pdf}}
+		}
+	\end{overprint}
+}
+\end{frame}
+
+
+\begin{cframe}{Functions}
+	Let $\vec{a},\vec{b} \in \mathbb{Z}^k_q$ $k,q \in \mathbb{N}$, $l = \left\lfloor \log(q) \right\rfloor + 1$ and $N=k \cdot l$\\[0.7cm]
+		\begin{align*}
+			\visible<2->{\mathbf{BitDecomp}(\vec{a}) &= (a_{1,0},...,a_{1,l-1},...,a_{k,0}...,a_{k,l-1})^T\\
+		\mathbf{BitDecomp^{-1}}(\vec{a}') &= (\sum_{j=0}^{l-1} 2^j \cdot a_{1,j},...,\sum_{j=0}^{l-1} 2^j \cdot a_{k,j})^T} 
+		\visible<3->{\\ \mathbf{PowersOf2}(\vec{b}) &= (b_1,2\cdot b_1,...,2^{l-1}\cdot b_1,...,b_k,...,2^{l-1} \cdot b_k)^T}
+		\visible<4->{\\[0.1cm] \mathbf{Flatten}(\vec{a}) &= \mathbf{BitDecomp}(\mathbf{BitDecomp^{-1}}(\vec{a}))}
+		\end{align*}
+\end{cframe}
+\begin{cframe}{Function: Examples}
+	Set $k=2, q = 4 \Rightarrow l=3, N=6$\\
+\begin{overlayarea}{\textwidth}{7cm}
+	\only<2-5>{
+		\begin{align*}
+		\mathbf{Bitdecomp}( \left(
+		\begin{array}{c}
+		3\\2
+		\end{array}
+		\right)) \visible<3->{&= 
+		\left(
+		\begin{array}{c}
+		0\\1\\1\\0\\1\\0\\
+		\end{array}
+		\right)	
+		\begin{array}{c} \left.
+		\vphantom{ \begin{array}{c} 0 \\ 1 \\ 1 \end{array}}
+		\right\} 3_2 \\ \left.
+		\vphantom{ \begin{array}{c} 0 \\ 1 \\ 0 \end{array}}
+		\right\} 2_2
+		\end{array} \\}
+		\mathbf{Bitdecomp^{-1}}( \left(
+		\begin{array}{c}
+		0\\0\\1\\1\\1\\1
+		\end{array}
+		\right)) \visible<4->{&= 
+		\left(
+		\begin{array}{c}
+		1\\7\\
+		\end{array}
+		\right)} \visible<5->{= 
+		\left(
+		\begin{array}{c}
+		1\\3\\
+		\end{array}
+		\right)}			
+		\end{align*}
+		\vfill
+	}
+	\only<6-8>{
+		\begin{align*}
+		\mathbf{PowersOf2}( \left(
+		\begin{array}{c}
+		2\\
+		3\\
+		\end{array}
+		\right)) \visible<7->{&= \left(
+		\begin{array}{c}
+		2\\
+		4\\
+		8\\
+		3\\
+		6\\
+		12\\
+		\end{array}
+		\right)}\visible<8->{ = \left(
+		\begin{array}{c}
+		2\\
+		0\\
+		0\\
+		3\\
+		2\\
+		0\\
+		\end{array}
+		\right)}
+		\end{align*}
+		\vfill
+	}
+	\only<9-13>{\begin{align*}
+		\mathbf{Flatten}(\left(\begin{array}{c}
+		0\\1\\2\\1\\2\\3
+		\end{array} \right)) \visible<10->{&= \mathbf{BitDecomp}(\mathbf{BitDecomp^{-1}(\left(\begin{array}{c}
+			0\\1\\2\\1\\2\\3
+			\end{array} \right))}) \\}
+		\visible<11->{&= \mathbf{BitDecomp}(\left(\begin{array}{c}
+		1 \cdot  0 + 2\cdot 1 + 2^2 \cdot  2\\1 \cdot  1 + 2\cdot 2 + 2^2 \cdot  3
+		\end{array} \right))\\} \visible<12->{&= \mathbf{BitDecomp}(\left(\begin{array}{c}
+		2\\1
+		\end{array} \right))	\\}
+		\visible<13->{&= \left(\begin{array}{c}
+		0\\1\\0\\0\\0\\1
+		\end{array} \right)}
+		\end{align*}
+		\vfill
+}
+\end{overlayarea}
+\end{cframe}
+\subsection[Key Generation]{}
+\begin{cframe}{Key Generation}
+	Choose a modulus $q$, dimension $n$, error distribution $\chi$ and $m$.
+
+	\begin{description}
+		\item[Private Key]<2-> Pick $\vec{t} \leftarrow \mathbb{Z}^n_q$, $\red{sk} = \vec{s} \leftarrow (1,-t_1,...,-t_n)$.\\Set $\vec{v}  \leftarrow \mathbf{PowersOf2}(\vec{s})$\\[0.5cm]
+		\item[Public Key]<3-> Generate $B \leftarrow \mathbb{Z}_q^{m\times n} $ uniformly and sample $\vec{e} \leftarrow \chi^m$.\\ Let $\vec{b} = B \cdot  \vec{t} + \vec{e}$:\\
+		
+		\begin{align*}
+		\blue{pk} = A = \begin{pmatrix}
+		b_1 & B_{1,1} & \cdots & B_{1,n} \\
+		\vdots & \vdots & \ddots & \vdots \\
+		b_m & B_{n,1} & \cdots & B_{m,n}
+		\end{pmatrix}\hspace*{2cm}
+		\end{align*}
+	\end{description}
+\end{cframe}
+
+\subsection[Dec/Encryption]{}
+
+\begin{cframe}{Encryption and Decryption}
+	\begin{overprint}
+		\onslide<1->{
+			Sample $R \in \{0,1\}^{N\times m}$ 
+			\begin{align*}
+			\mathbf{Enc}(\mu,pk) = \visible<2->{\mathbf{Flatten}(\mu \cdot  \mathcal{I}_N + \mathbf{BitDecomp}(R\cdot A))}
+			\end{align*}}
+		
+		\onslide<3->{
+			Note: $\vec{v}_{0,...,l} = (1,2,...,2^{l-1})$. Let $v_i = 2^i \in (\frac{q}{4},\frac{q}{2}]$.\\\visible<4->{ Small plaintext (e.g $\mu \in \{0,1\}$) recovery:
+			\begin{align*}
+			\mathbf{Dec}(C,sk) = \visible<5->{\left\lfloor \frac{\left\langle C_i,\vec{v} \right\rangle}{v_i} \right\rceil
+			&= \left\lfloor \frac{(C \cdot  \vec{v})_i}{v_i} \right\rceil}
+			\end{align*}}
+			\visible<6->{General Method: \cite{micciancio2012trapdoors}}
+		}
+	\end{overprint}
+\end{cframe}
+
+\begin{frame}
+	\only<1-8>{\frametitle{Encryption and Decryption: Correctness}}
+	\only<9->{\frametitle{Encryption and Decryption: Correctness (cont.)}}
+	\only<2-8>{
+		\begin{exampleblock}{}
+			\vspace{-0.4cm}
+			\begin{align*}
+	\langle\Flatten(\vec{a}), \PowersOf(\vec{b})\rangle &= \langle \vec{a},\PowersOf(\vec{b})\rangle\\
+	\langle\BitDecomp(\vec{a}), \PowersOf(\vec{b})\rangle &= \langle \vec{a}, \vec{b} \rangle
+		\end{align*}
+	\end{exampleblock}
+		\begin{align*}
+		\visible<3->{\mathbf{Dec}(\mathbf{Enc}(\mu, pk), sk) &= \Dec(\Flatten(\mu \cdot  \mathcal{I}_N + \BitDecomp(R\cdot A)),sk)\\}
+		\visible<4->{&= \left\lfloor \frac{\left(\Flatten(\mu \cdot  \mathcal{I}_N + \BitDecomp(R\cdot A)) \cdot  \vec{v}\right)_i}{v_i} \right\rceil \\}
+		\visible<5->{&= \left\lfloor \frac{\left((\mu \cdot  \mathcal{I}_N + \BitDecomp(R\cdot A)) \cdot  \vec{v}\right)_i}{v_i} \right\rceil\\}
+		\visible<6->{&= \left\lfloor \frac{\left(\mu \cdot  \mathcal{I}_N \cdot  \vec{v} + (R\cdot A)\cdot \vec{s}\right)_i}{v_i} \right\rceil\\}
+		\visible<7->{&= \left\lfloor \frac{\left(\mu \cdot  \vec{v} + R\cdot \vec{e}\right)_i}{v_i} \right\rceil\\}
+		\visible<8->{&\leq \left\lfloor \frac{\mu \cdot  v_i + ||\vec{e}||_1}{v_i} \right\rceil\\}
+		\end{align*}
+	}
+	\only<9->{
+	\begin{overprint}
+	\begin{overlayarea}{\textwidth}{1.01cm}
+		\onslide<10->{\begin{itemize}
+			\item<10-> \only<10>{\red{$v_i \in (\frac{q}{4},\frac{q}{2}]$}}\only<11->{$v_i \in (\frac{q}{4},\frac{q}{2}]$}
+			\item<11-> \only<11>{\red{$\chi$ bounded s.t. $||\vec{e}||_1 < \frac{q}{8}$}\only<12->}{$\chi$ bounded s.t. $||\vec{e}||_1 < \frac{q}{8}$}
+		\end{itemize}
+	}
+	\end{overlayarea}
+		\onslide<9->{
+		\begin{align*}
+		\Dec(\Enc(\mu, pk), sk) &\leq \left\lfloor \frac{\mu \cdot  v_i + ||\vec{e}||_1}{v_i} \right\rceil\\
+		\only<10>{&\leq \left\lfloor \mu + \frac{||\vec{e}||_1}{\red{q/4}} \right\rceil\\}
+		\visible<11->{&\leq \left\lfloor \mu + \frac{||\vec{e}||_1}{q/4} \right\rceil\\}
+		\only<11>{&\leq \left\lfloor \mu + \frac{\red{q/8}}{q/4} \right\rceil\\}
+		\visible<12->{&< \left\lfloor \mu + \frac{q/8}{q/4} \right\rceil\\}
+		\visible<12->{&< \left\lfloor \mu + \frac{1}{2}\right\rceil}
+		\end{align*}
+	}
+	\onslide<13->{{\Large
+		\begin{align*}
+		&\Rightarrow C \cdot  \vec{v} \approx \mu \cdot  \vec{v} \\
+		\visible<14->{&\Rightarrow \text{\textit{approximate eigenvector}}}
+		\end{align*}
+}
+}
+\end{overprint}
+}
+\end{frame}
+\subsection[Homomorphisms]{}
+\begin{cframe}{Homomorphic operations}
+	
+	Errors and values $B$-Bounded. Let $C_1 = \Enc(\mu,pk)$ and $C_2 = \Enc(\nu,pk)$.\\[0.5cm]
+	
+	\begin{description}
+		\item[Addition]<2-> \begin{itemize}
+				\item $\Enc(\mu + \nu,pk) = \Flatten(C_1 + C_2)$
+			\item<4-> $\mathbf{Error:}\, \text{ Bounded by $2 \cdot  B$}$\\[0.5cm]
+		\end{itemize}
+		\item[Multiplication]<3-> \begin{itemize}
+				\item $\Enc(\mu \cdot  \nu,pk) = \Flatten(C_1 \cdot  C_2)$
+			\only<5>{\item $\mathbf{Error:}\, \text{ Bounded by $(N + 1) \cdot  B^2$}$
+		   \begin{align*}
+			C_1 \cdot  C_2 \cdot  \vec{v} &= C_1\cdot (\nu \cdot  \vec{v} + \vec{e}_2) \hspace{6.0cm}\\
+			&=  \mu \cdot  \nu \cdot  \vec{v} + \nu \cdot  \vec{e}_1 + C_1 \cdot  \vec{e}_2 \end{align*}  \\[0.3cm]}
+			\only<6->{\item $\mathbf{Error:}\, \text{\blue{Bounded by $(N + 1) \cdot  B$}}$
+			\begin{align*}
+			C_1 \cdot  C_2 \cdot  \vec{v} &= C_1\cdot (\nu \cdot  \vec{v} + \vec{e}_2) \hspace{6.0cm}\\
+			&=  \mu \cdot  \nu \cdot  \vec{v} + \nu \cdot  \vec{e}_1 + C_1 \cdot  \vec{e}_2 \end{align*}  \\[0.3cm]}
+		\end{itemize}
+	\end{description}
+	\visible<7-> {$\Rightarrow$ For circuit depth $L:\, e(L) \leq (N+1)^L \cdot  B$\\[0.2cm]}
+	\visible<8-> {\cite{brakerski2014lattice} Order of multiplication matters: \\[-0.45cm]
+	\begin{align*}\mathbf{noise}((C_1\cdot C_2)\cdot (C_3\cdot C_4)) \ge  \mathbf{noise}(C_1 \cdot  (C_2 \cdot  (C_3\cdot C_4)))\end{align*}}
+\end{cframe}
+
+\subsection[Security]{}
+\begin{cframe}{Security}
+	\cite{Regev:2005} includes scheme with property:
+	\visible<2->{\begin{theorem}
+		If there exists a polynomial time algorithm $W$ that distinguishes between encryptions of 0 and 1 then there exists a distinguisher Z that distinguishes between $A_{\vec{s},\chi}$ and $U$ for a non-negligible fraction of all possibles.
+	\end{theorem}}
+	\visible<3->{Row of $R\cdot A$ is an encryption of $0$} 
+	\begin{center} \visible<4->{$\Rightarrow$ the joint distribution $(A,R\cdot A)$ is computationally indistinguishable from uniform over $\mathbb{Z}^{m\times(n+1)}_q \times \mathbb{Z}^{N\times(n+1)}_q$.\\[0.2cm]}
+	\visible<5->{$\Rightarrow$ So is $(A, R\cdot A + \mu \cdot  \BitDecompI(I_N)) = (A,\BitDecompI(C))$ \\[0.2cm]}
+	\visible<6->{$\Rightarrow$ So is $(A, C)$}
+	 \end{center}
+\end{cframe}
+
+\section{TFHE}
+
+\begin{frame}
+
+\centering
+\begin{beamercolorbox}[sep=8pt,center]{section title}
+	\usebeamerfont{section title}\insertsection\par
+\end{beamercolorbox}
+
+\end{frame}
+
+\subsection[About]{}	
+\begin{cframe}{About}
+	\begin{center}
+	\includegraphics[width=0.3\textwidth]{graphics/logo-tfhe}
+\end{center}
+	\begin{itemize}
+		\item Implements GSW over Ring $\mathbb{R}[x]/(x^n +1)$
+		\item Utilizes multitude of optimizations from plethora of papers.
+		\item \textbf{With} Per-Gate Bootstrapping
+	\end{itemize}
+\vfill
+\end{cframe}	
+\subsection[Build]{}	
+\begin{cframe}{Building TFHE}
+	\begin{onlyenv}<1-4>
+		\begin{itemize}
+			\item<1-4> \texttt{git clone \textcolor{blue}{\url{https://github.com/tfhe/tfhe}} \&\& cd tfhe}
+			\item<2-4> \texttt{mkdir build \&\& cd build}
+			\item<3-4> \texttt{cmake ../src} \\ \begin{description}
+				\item[\texttt{-DENABLE\_FFTW}] Use different library to compute Fourier Transformation.
+				\item[\texttt{-DCMAKE\_INSTALL\_PREFIX}] Set different path for installation.
+			\end{description}
+			\item<4-4> \texttt{make}
+		\end{itemize}
+	\end{onlyenv}
+
+	\begin{onlyenv}<5>
+		\begin{figure}
+		\includegraphics[width=\textwidth, keepaspectratio]{graphics/Expectation}
+		\caption*{Expectation}
+		\end{figure}
+	\end{onlyenv}
+
+	\begin{onlyenv}<6>
+		\begin{figure}
+				\hspace*{0cm}\includegraphics[width=\textwidth, keepaspectratio]{graphics/DreadIt4}
+		\caption*{Reality}
+		\end{figure}
+		
+	\end{onlyenv}
+
+	\begin{onlyenv}<7-8>
+		Error known: \textcolor{blue}{\url{https://github.com/tfhe/tfhe/issues/198}} 
+		\vspace*{0.5cm}		
+	\end{onlyenv}
+	
+	\begin{onlyenv}<7-7>
+		\begin{figure}
+		\includegraphics[keepaspectratio,width=\textwidth]{graphics/prefix}
+		\caption*{\texttt{src/libtfhe/fft\_processors/spqlios/spqlios-fft-impl.cpp}}
+		\end{figure}
+	\end{onlyenv}
+
+	\begin{onlyenv}<8-8>
+		\begin{figure}
+			Fix: remove \texttt{\_\_restrict} \\
+			\vspace{0.2cm}
+			\includegraphics[keepaspectratio,width=\textwidth]{graphics/afterfix}
+			\caption*{\texttt{src/libtfhe/fft\_processors/spqlios/spqlios-fft-impl.cpp}}
+		\end{figure}
+	\end{onlyenv}
+
+\end{cframe}	
+\subsection[API]{}
+\begin{cframe}{API}
+	Complete list at: \textcolor{blue}{\url{https://tfhe.github.io/tfhe/gate-bootstrapping-api.html}} \\[1cm]
+	Small set of API functions for:
+	\begin{itemize}
+		\item<2-> I/O, e.g: \texttt{export\_tfheGateBootstrappingSecretKeySet\_toFile}
+		\item<3-> \textit{Symmetric} Encryption/Decryption, e.g: \texttt{bootsSymEncrypt} 
+		\item<4-> Boolean circuits, e.g: \texttt{bootsNAND}
+	\end{itemize}
+	\vspace{1cm}
+	\visible<5->{ \textbf{No multibit computation !} (yet) } 
+\end{cframe}
+
+\begin{cframe}{Demo}
+	\begin{minipage}{0.45\textwidth}
+		\hspace*{-1cm}\includegraphics[width=\textwidth,keepaspectratio,angle=-25]{graphics/demo1}
+	\end{minipage}
+	\begin{minipage}{0.45\textwidth}
+		\includegraphics[width=\textwidth,keepaspectratio,scale=1.6,angle=25]{graphics/demo3}
+	\end{minipage}
+\end{cframe}
+
+\appendix
+\begin{frame}[fragile]
+
+	\begin{center}
+		{{\fontsize{40}{48} \selectfont End}}
+	\end{center}
+	\vspace*{1cm}
+\begin{exampleblock}{}
+	\begin{verbatim}
+	No one:
+	HElib Developers:
+	\end{verbatim}
+	\kern-1.5em
+	\begin{figure}
+		\begin{minted}{c}
+		const FHEPubKey& public_key = secret_key;
+		\end{minted}
+	\end{figure}
+\end{exampleblock}
+
+		
+\end{frame}
+\begin{frame}
+\frametitle{Further Reading}
+	\begin{itemize}
+		\item TL;DR: \blue{\url{https://martinralbrecht.wordpress.com/2016/03/03/gsw13-3rd-generation-homomorphic-encryption-from-learning-with-errors/}}
+		\item TFHE: \blue{\url{http://lab.algonics.net/slides_ac16/index-asiacrypt.html\#/}}
+		\item LWE: \textcolor{blue}{\url{https://cims.nyu.edu/~regev/papers/lwesurvey.pdf}}
+	\end{itemize}
+\end{frame}
+
+\begin{frame}[allowframebreaks]
+\frametitle{References}
+	\bibliography{ref}
+\end{frame}	
+	
+
+\end{document}
+

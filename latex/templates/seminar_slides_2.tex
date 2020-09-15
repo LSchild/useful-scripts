@@ -1,0 +1,498 @@
+% !TeX program = lualatex
+
+\documentclass[lualatex, 9pt]{beamer}
+
+\usepackage{default}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage[notransparent, svgpath=./images/]{svg}
+\usepackage{tikz}
+\usepackage{comment}
+\usepackage[utf8]{inputenc}
+\usepackage{soul}
+\usepackage{fontspec}
+\usepackage{xcolor}
+\usepackage{tabularx}
+\usepackage{tkz-euclide}
+\usepackage{caption}
+\captionsetup[figure]{labelformat=empty}
+
+\usepackage{transparent}
+
+\setsansfont{Inconsolata Regular}
+
+\usetikzlibrary{shadows,positioning,calc,decorations.pathreplacing}
+
+\usetheme{CambridgeUS}
+\usecolortheme{beaver}
+
+%\usepackage[euler-digits]{eulervm}
+\usefonttheme{professionalfonts}
+
+\setbeamertemplate{itemize items}[triangle]
+
+\newcommand\blfootnote[1]{%
+	\begingroup
+	\renewcommand\thefootnote{}\footnote{#1}%
+	\addtocounter{footnote}{-1}%
+	\endgroup
+}
+
+\definecolor{myred}{HTML}{8f0000}
+\definecolor{lachs}{HTML}{d56d56}
+\definecolor{blue1}{RGB}{72,145,211}
+\definecolor{blue2}{RGB}{87,183,235}
+
+\AtBeginSection[]{
+	\begin{frame}
+	\vfill
+	\centering
+	\setbeamercolor{coloredboxstuff}{fg=myred,bg=gray!20!white}
+	\begin{beamercolorbox}[sep=8pt,center,shadow=false,rounded=true]{coloredboxstuff}
+		\usebeamerfont{title}\insertsectionhead\par%
+	\end{beamercolorbox}
+	\vfill
+\end{frame}
+}
+
+\begin{document}
+	
+	\tikzset{
+		>=stealth',
+		invisible/.style={opacity=0},
+		visible on/.style={alt={#1{}{invisible}}},
+		alt/.code args={<#1>#2#3}{
+			\alt<#1>{\pgfkeysalso{#2}}{\pgfkeysalso{#3}}
+		},	
+}
+
+
+
+\author[Leonard Schild]{Leonard Schild \\[0.8cm] Supervisors: Prof. Michael Backes and Kamil Kluczniak}
+\title{Make FHE fast(er) \st{again} !}
+\date{19.02.2020}
+\institute{Saarland University}
+
+\maketitle
+
+\section{Motivation}
+
+\begin{frame}
+	\frametitle{Setting}
+	\begin{center}
+	\begin{tikzpicture}
+		\centering
+		\node[inner sep=0pt] (A) at (0,0.5) {\includesvg[width=0.08\textwidth]{avatar}};
+		\node[inner sep=0pt] (B) at (-3,-2) {\includesvg[width=0.08\textwidth]{dna}};
+		
+		\node[inner sep=0pt] (b) at (-1.5, -2) {\includesvg[width=0.13\textwidth]{arrow1}};
+		\node[inner sep=0pt, rotate=15] (c) at (1.75, -1.5) {\includesvg[width=0.13\textwidth]{arrow1}};
+		\node[inner sep=0pt, rotate=-15] (d) at (1.75, -2.5) {\includesvg[width=0.13\textwidth]{arrow1}};
+		
+		\node[inner sep=0pt] (C) at (0,-2) {\includesvg[width=0.08\textwidth]{deep-learning}};
+		\node[inner sep=0pt] (D) at (3.5,-1) {\includesvg[width=0.1\textwidth]{virus}};
+		\node[inner sep=0pt] (E) at (3.5,-3) {\includesvg[width=0.1\textwidth]{bacteria}};
+		
+		%\draw[->, line width=0.5mm] (B) edge (C);
+		%\draw[->, line width=0.5mm] (C) edge (D);
+		%\draw[->, line width=0.5mm] (C) edge (E);
+		
+		\fill [fill=cyan, rounded corners, opacity=0] (-0.6,1.25) rectangle (0.6,-2.8);
+		\fill [fill=cyan, rounded corners, opacity=0] (-3.6,1.25) rectangle (-2.4,-2.8);
+		
+	\end{tikzpicture}
+	\end{center}
+\end{frame}
+
+\begin{frame}
+\frametitle{Application}
+\begin{center}
+	\begin{overprint}
+	\begin{tikzpicture}
+	\centering
+	\node[inner sep=0pt] (A) at (0,-2) {\includesvg[width=0.08\textwidth]{avatar}};
+	
+	\node[inner sep=0pt] (B) at (-3,-2) {{ \onslide<1>{\includesvg[width=0.08\textwidth]{hospital-building}} }};
+	\node[inner sep=1.5pt, fill=white, fill opacity=0.7,text opacity=1, rounded corners, draw=blue1] (C) at (0.5,-1.5) {\includesvg[width=0.03\textwidth]{deep-learning}};
+	\node[inner sep=0pt] (D) at (3.5,-1) {\includesvg[width=0.1\textwidth]{virus}};
+	\node[inner sep=0pt] (E) at (3.5,-3) {\includesvg[width=0.1\textwidth]{bacteria}};
+	
+	\node[inner sep=0pt] (A) at (-1.6, -1.6) {{ \onslide<1>{\includesvg[width=0.05\textwidth]{dna}} }};
+	
+	\node[inner sep=0pt] (b) at (-1.5, -2) {\includesvg[width=0.13\textwidth]{arrow1}};
+	\node[inner sep=0pt, rotate=15] (c) at (1.75, -1.5) {\includesvg[width=0.13\textwidth]{arrow1}};
+	\node[inner sep=0pt, rotate=-15] (d) at (1.75, -2.5) {\includesvg[width=0.13\textwidth]{arrow1}};
+
+	% transition 1
+	\node[inner sep=0pt] (B) at (-2.92,-2) {{\onslide<2>{\includesvg[width=0.08\textwidth]{hospital-building-sad}} }};
+	\node[inner sep=0pt] (A) at (-1.6, -1.6) {{ \onslide<2>{\includesvg[width=0.05\textwidth]{dna-sad}} }};
+	\draw [decorate,decoration={brace,amplitude=10pt,mirror,raise=4pt},yshift=0pt, opacity=0]
+	(-3.75,-2.75) -- (-0.6,-2.75);
+	\draw [decorate,decoration={brace,amplitude=10pt,mirror,raise=4pt},yshift=0pt, visible on=<2>]
+	(-3.75,-2.75) -- (-0.6,-2.75);
+	
+	%\node[inner sep=0pt, opacity=0] (F) at (-2.17, -4) {\includesvg[width=0.08\textwidth]{law}} ;
+	\node[inner sep=0pt] (F) at (-2.17, -4) {{ \onslide<2>{\includesvg[width=0.08\textwidth]{law}} }} ;
+	\fill [rounded corners, fill=red, opacity=0.2, visible on=<2>] (-3.75,-1.25) rectangle (-0.6,-2.75);
+	
+	\end{tikzpicture}
+\end{overprint}
+\end{center}
+\end{frame}
+
+\begin{frame}
+\frametitle{Application}
+\begin{center}
+	\begin{overprint}
+		\begin{tikzpicture}
+		\centering
+		\node[inner sep=0pt, visible on=<1>] (A) at (0,-2) {\includesvg[width=0.08\textwidth]{hospital-building}};
+		\node[inner sep=0pt, visible on=<2>] (A) at (0,-2) {\includesvg[width=0.08\textwidth]{hospital-building-sad}};
+		
+		\node[inner sep=0pt] (B) at (-3,-2) {\includesvg[width=0.08\textwidth]{avatar} };
+		\node[inner sep=1.5pt, fill=white, fill opacity=0.7,text opacity=1, rounded corners, draw=blue1] (C) at (0.5,-1.5) {\includesvg[width=0.03\textwidth]{dna}};
+		\node[inner sep=0pt] (D) at (3.5,-1) {\includesvg[width=0.1\textwidth]{virus}};
+		\node[inner sep=0pt] (E) at (3.5,-3) {\includesvg[width=0.1\textwidth]{bacteria}};
+		
+		\node[inner sep=0pt] (A) at (-1.6, -1.6) {{ \includesvg[width=0.05\textwidth]{deep-learning} }};
+		
+		\node[inner sep=0pt] (b) at (-1.5, -2) {\includesvg[width=0.13\textwidth]{arrow1}};
+		\node[inner sep=0pt, rotate=15] (c) at (1.75, -1.5) {\includesvg[width=0.13\textwidth]{arrow1}};
+		\node[inner sep=0pt, rotate=-15] (d) at (1.75, -2.5) {\includesvg[width=0.13\textwidth]{arrow1}};
+		
+		% transition 1
+		%\node[inner sep=0pt] (B) at (-2.92,-2) {{\onslide<2>{\includesvg[width=0.08\textwidth]{hospital-building-sad}} }};
+		%\node[inner sep=0pt] (A) at (-1.6, -1.6) {{ \onslide<2>{\includesvg[width=0.05\textwidth]{dna-sad}} }};
+		\draw [decorate,decoration={brace,amplitude=10pt,mirror,raise=4pt},yshift=0pt, opacity=0]
+		(-3.75,-2.75) -- (-0.6,-2.75);
+		%\draw [decorate,decoration={brace,amplitude=10pt,mirror,raise=4pt},yshift=0pt, visible on=<2>]
+		%(-3.75,-2.75) -- (-0.6,-2.75);
+		
+		%\node[inner sep=0pt, opacity=0] (F) at (-2.17, -4) {\includesvg[width=0.08\textwidth]{law}} ;
+		%\node[inner sep=0pt] (F) at (-2.17, -4) {{ \onslide<2>{\includesvg[width=0.08\textwidth]{law}} }} ;
+		
+		\fill [rounded corners, fill=red, opacity=0.2, visible on=<2>] (-2.35,-1.15) rectangle (0.9,-2.75);
+		
+		\draw [decorate,decoration={brace,amplitude=10pt,mirror,raise=4pt},yshift=0pt, visible on=<2>]
+		(-2.35,-2.75) -- (0.9,-2.75);
+		
+		\node[inner sep=0pt] (F) at (-0.725, -4) {{ \onslide<2>{\includesvg[width=0.08\textwidth]{leak} \includesvg[width=0.08\textwidth]{server}}  }};
+		
+		\end{tikzpicture}
+	\end{overprint}
+\end{center}
+\end{frame}
+
+\begin{frame}
+\frametitle{No solution ?}
+\begin{center}
+	\begin{tikzpicture}
+	\node [inner sep=10pt, fill=black, fill opacity=0.3, text opacity=0.95, rounded corners] {\includesvg[width=0.3\textwidth]{avatar}};
+	\end{tikzpicture}
+\end{center}
+\end{frame}
+
+\begin{frame}
+	\frametitle{}
+	\begin{center}
+		\Huge{Fully Homomorphic encryption}
+	\end{center} 	
+\end{frame}
+
+\begin{frame}
+\frametitle{Fully Homomorphic Encryption}
+\begin{overprint}
+
+\begin{definition}[Homomorphism]
+Given two groups $\mathbb{G} = (G,\circ)$ $\mathbb{H} = (H,\bullet)$, $f:G \rightarrow H$ is a group homomorphism if:
+$$\forall a,b \in G:  f(a \circ b) = f(a) \bullet f(b)$$
+\end{definition}
+\vspace{.75cm}
+\onslide<2->{
+Fully Homomorphic Encryption:}
+\begin{align*}
+\onslide<2->{&\left\{ \begin{array}{cc} Enc(a + b) = Enc(a) \oplus Enc(b) \\
+Enc(a \cdot b) = Enc(a) \odot Enc(b) \end{array} \right\}} \\[0.5cm]
+\onslide<3->{\Leftrightarrow &\left\{ \begin{array}{cc} a + b = Dec(Enc(a) \oplus Enc(b)) \\
+a \cdot b = Dec(Enc(a) \odot Enc(b)) \end{array}
+\right\}}
+\end{align*}
+
+\end{overprint}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Setting: Problem Solved !}
+\begin{center}
+	\begin{tikzpicture}
+	\centering
+	\node[inner sep=0pt] (A) at (0,-2) {\includesvg[width=0.08\textwidth]{avatar}};
+	
+	\node[inner sep=0pt] (B) at (-3,-2) {\includesvg[width=0.08\textwidth]{hospital-building}};
+	\node[inner sep=1.5pt, fill=white, fill opacity=0.7,text opacity=1, rounded corners, draw=blue1] (C) at (0.5,-1.5) {\includesvg[width=0.03\textwidth]{deep-learning}};
+	\node[inner sep=0pt] (D) at (3.5,-1) {\includesvg[width=0.1\textwidth]{virus}};
+	\node[inner sep=0pt] (E) at (3.5,-3) {\includesvg[width=0.1\textwidth]{bacteria}};
+	
+	\node[inner sep=0pt] (A) at (-1.6, -1.5) {\includesvg[width=0.05\textwidth]{dna}};
+	\node[inner sep=0pt] (Ab) [left = 0.01em of A] {$\left[\vphantom{\includesvg[width=0.03\textwidth]{dna}}\right.$};
+	\node[inner sep=0pt] (Aa) [right = 0.01em of A] {$\left.\vphantom{\includesvg[width=0.03\textwidth]{dna}}\right]_{p_H}$};
+	%\node[inner sep=0pt] (Ab) at (-1.6, -1.6) {\includesvg[width=0.05\textwidth]{dna}};
+	
+	\node[inner sep=0pt] (b) at (-1.5, -2) {\includesvg[width=0.13\textwidth]{arrow1}};
+	\node[inner sep=0pt, rotate=15] (c) at (1.75, -1.5) {\includesvg[width=0.13\textwidth]{arrow1}};
+	\node[inner sep=0pt, rotate=-15] (d) at (1.75, -2.5) {\includesvg[width=0.13\textwidth]{arrow1}};
+	
+	\node[inner sep=0pt] (Ab) at (2.7,-2) {$\left[\vphantom{\includesvg[width=0.17\textwidth]{dna}}\right.$};
+	\node[inner sep=0pt] (Ab) at (4.5,-2) {$\left.\vphantom{\includesvg[width=0.17\textwidth]{dna}}\right]_{p_H}$};
+	
+	\end{tikzpicture}
+\end{center}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Issues}
+\begin{center}
+	Why hasn't the industry created a fancy new buzzword yet ? \\[1cm]
+\end{center}
+\begin{center}
+	\begin{overprint}
+\begin{tikzpicture}
+	\node [inner sep=0pt] (A) at (-2.5,0) {{ \onslide<2-3>{\includesvg[width=0.1\textwidth]{memory}} }};
+	\node [inner sep=0pt, opacity=0.2] (A) at (-2.5,0) {{ \onslide<4->{\includesvg[width=0.1\textwidth]{memory}} }};
+	
+	\node [inner sep=0pt] (B) at (2.5,0) {{ \onslide<3->{\includesvg[width=0.1\textwidth]{speed}} }};
+	\node [inner sep=0pt, align=center] (C) at (-2.5,-1.5) {{\onslide<2-3>{Multiple keys of}} \\ {\onslide<2-3>{large size} }};
+	\node [inner sep=0pt, align=center, opacity=0.2] (C) at (-2.5,-1.5) {{\onslide<4->{Multiple keys of}} \\ {\onslide<4->{large size} }};
+	%\node [inner sep=0pt, align=center, opacity=0.2] (C) at (-2.5,-1.5) {Multiple keys of \\ large size};
+	\node [inner sep=0pt, align=center] (D) at (2.5,-1.5) {{ \onslide<3->{Slow operations} }};
+	\draw [very thick, draw=green, opacity=0.5, rounded corners, text opacity=1, visible on=<4->] (1,1) rectangle (4,-2);
+\end{tikzpicture}\\[0.75cm]
+% mention MPC vs FHE tradeoffs
+\onslide<5->{Alternative solution: Multi Party Computation}
+	\end{overprint}
+\end{center}
+\end{frame}
+
+\section{Thesis}
+
+\begin{frame}
+\frametitle{Lattices}
+
+\begin{overprint}
+	\onslide<5>{\blfootnote{https://web.eecs.umich.edu/\texttt{\sim}cpeikert/pubs/lattice-survey.pdf}}
+\begin{Definition}
+	A Lattice $\mathcal{L} \subset \mathbb{R}^n$ is:
+	\begin{itemize}
+		\item<2-> an \textit{additive subgroup}: $\mathbf{0} \in \mathcal{L}, -x, x+y \in \mathcal{L}$ for all $x,y \in \mathcal{L}$.
+		\item<3-> \textit{discrete}: every $x \in \mathcal{L}$ has a neighborhood in $\mathbb{R}^n$ in which $x$ is the only lattice point.
+	\end{itemize}
+\end{Definition}
+\onslide<4->{
+Every lattice can be finitely  generated  as  the  integer  linear  combinations  of  some  linearly  independent basis vectors $\mathbf{B} = \{ \mathbf{b}_1,...,\mathbf{b}_k \}$. I.e.}
+\onslide<5->{
+\begin{align*}
+	\mathcal{L} = \left\{\sum_{i=1}^{k} z_i \cdot \mathbf{b}_i : z_i \in \mathbb{Z}  \right\}
+\end{align*}}
+\end{overprint}
+\end{frame}
+
+\begin{frame}
+\frametitle{Lattices}
+\begin{overprint}
+\begin{align*}
+\mathbf{B} = \left\{ \left(\begin{array}{c}
+3\\1\end{array}\right), \left(\begin{array}{c}
+1\\2
+\end{array}\right) \right\} 
+\end{align*}
+\onslide<2->{
+\begin{figure}[h]
+	\includesvg[width=0.7\textwidth]{lattice}
+\end{figure}
+}
+\end{overprint}
+
+\end{frame}
+
+
+
+\begin{frame}
+\frametitle{Lattices: Closest Vector Problem}
+\begin{align*}
+\mathbf{B} = \left\{ \left(\begin{array}{c}
+3\\1\end{array}\right), \left(\begin{array}{c}
+1\\2
+\end{array}\right) \right\} 
+\end{align*}\vspace{0em} %% Necessary, but WTF ???
+\begin{figure}[h]
+	\includesvg[width=0.7\textwidth]{latticecvp}
+\end{figure}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Lattices: Learning With Errors}
+	\begin{overprint}
+		Introduced in \cite{reg05}. \\[1cm]
+		\only<1>{
+			\begin{align*}
+			14s_1 + 15s_2 + 5s_3 + 2s_4 &= 8 \pmod{17} \\
+			13s_1 + 14s_2 + 14s_3 + 6s_4 &= 16 \pmod{17} \\
+			6s_1 + 10s_2 + 13s_3 + 1s_4 &= 3 \pmod{17} \\
+			10s_1 + 4s_2 + 12s_3 + 16s_4 &= 12 \pmod{17} \\
+			9s_1 + 5s_2 + 1s_3 + 6s_4 &= 9 \pmod{17} \\
+			\vdots
+			\end{align*}
+		}
+		\only<2->{
+		\begin{align*}
+		14s_1 + 15s_2 + 5s_3 + 2s_4 &= 8 + e_1\pmod{17} \\
+		13s_1 + 14s_2 + 14s_3 + 6s_4 &= 16 + e_2\pmod{17} \\
+		6s_1 + 10s_2 + 13s_3 + 1s_4 &= 3 + e_3\pmod{17} \\
+		10s_1 + 4s_2 + 12s_3 + 16s_4 &= 12 + e_4\pmod{17} \\
+		9s_1 + 5s_2 + 1s_3 + 6s_4 &= 9 + e_5\pmod{17} \\
+		\vdots
+		\end{align*}
+		}
+	\end{overprint}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Lattices: FHE}
+	\begin{overprint}
+	A bulk of FHE schemes are based on lattice problems or problems closely related to them (e.g LWE).\\[1cm]
+
+	\onslide<2->{Most rely on easily distributable computations, e.g.:}
+	\begin{itemize}
+		\item<3-> Matrix products
+		\item<4-> Vector addition or multiplication
+		\item<5-> Polynomial multiplication (R-LWE)
+	\end{itemize} 
+	\vspace{3em}
+	\onslide<6-> $\Rightarrow$ Use GPU to parallelise computation !
+	\end{overprint}
+\end{frame}
+
+
+
+\begin{frame}
+	\frametitle{GPGPU programming}
+	False equivalency: CPU and GPU core
+	\vfill
+	\begin{center}
+	\begin{minipage}{0.4\textwidth}
+		\centering
+		\includesvg[width=0.3\textwidth]{electronic} \\[0.5cm]
+		\begin{itemize}
+		\item<2-> Low latency \\
+		\item<3-> Few cores\\
+		\item<4-> High clock frequency
+		\end{itemize}
+	\end{minipage}\begin{minipage}{0.4\textwidth}
+	\centering
+	\includesvg[width=0.4\textwidth]{gpu} \\[0.5cm]
+	\begin{itemize}
+	\item<2-> High throughput \\
+	\item<3-> Large amount of cores\\
+	\item<4-> Low clock frequency
+	\end{itemize}
+\end{minipage}
+\end{center}
+
+\end{frame}
+\begin{comment}
+
+\begin{frame}
+	\frametitle{A more concrete view}
+	Goal: Make FHE practical for real life applications.\\
+	\begin{itemize}
+		\item<2-> \cite{chillotti2016faster,chillotti2019tfhe} TFHE: State of the art FHE scheme \begin{enumerate}
+			\item<3-> Based on \cite{gentry2013homomorphic}
+			\item<3-> Intuition: $Enc(\mu,\vec{s}) = (\vec{a},\langle \vec{a},\vec{s} \rangle + \mu + e)$
+			\item<3-> Assumption: Torus-LWE\\[0.5cm]
+		\end{enumerate} 
+		\item<4-> \cite{bourse2018fast} FHE on NN \begin{enumerate}
+			\item<5-> Uses TFHE
+			\item<5-> Discrete NN to recognize digits
+			\item<5-> Runs on encrypted data\\[0.5cm]
+		\end{enumerate}
+		\item<6-> NVIDIA: CUDA \begin{enumerate}
+			\item<7-> Cluster uses Tesla K80
+			\item<7-> Optimized libraries for NVIDIA GPUs.
+			\item<7-> Outdated OpenCL version (1.2)\\[0.1em]
+			\item<7->[] {\tikz\node[inner sep=0pt, opacity=0.5]{Can use PTX assembly};}
+		\end{enumerate}
+	
+	\end{itemize}
+\end{frame}
+
+\end{comment}
+
+\begin{frame}
+\frametitle{A more concrete view: Scheme}
+	\begin{figure}[h]
+		\centering
+	\includegraphics[width=0.3\linewidth]{images/logo-tfhe.png}
+	\caption{\cite{chillotti2019tfhe,chillotti2016faster}}
+	\end{figure}
+	\begin{itemize}
+		\item<2-> Based on \cite{gentry2013homomorphic}
+		\item<2-> Intuition: $Enc(\mu,\vec{s}) = (\vec{a},\langle \vec{a},\vec{s} \rangle + \mu + e)$
+		\item<2-> Assumption: Torus-LWE\\[0.5cm] 
+	\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{A more concrete view: Network}
+\begin{figure}[h]
+	\centering
+	\includesvg[width=0.2\linewidth]{images/deep-learning.svg}
+	\caption{\cite{bourse2018fast}}
+\end{figure}
+\begin{itemize}	
+	\item<2-> Recognize handwritten digits
+	\item<2-> Discrete Neural Network
+	\item<2-> Uses TFHE\\[0.5cm]
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{A more concrete view: GPU Programming}
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.4\linewidth]{images/cuda.jpg}
+\end{figure}
+\begin{itemize}	
+	\item<2-> CISPA Cluster uses Tesla K80
+	\item<2-> Optimized libraries for NVIDIA GPUs.
+	\item<2-> Outdated OpenCL version (1.2)\\[0.1em]
+	\item<2->[] {\tikz\node[inner sep=0pt, opacity=0.5]{Can use PTX assembly};}
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Timeline}
+	Two overlapping parts: \\[1cm]
+	\begin{itemize}
+		\item<2-> Implementation \begin{enumerate}
+			\item Port TFHE to GPU \\
+			\item Implement basic optimizations (e.g polynomial multiplication) \\
+			\item Modify existing algorithms to make them distributable. \\[0.5cm]
+		\end{enumerate}
+		\item<3-> Evaluation \begin{enumerate}
+			\item Repeat \cite{bourse2018fast} experiment and measure speedup 
+			\item Implement other neural network which could be used in real life and test our methods. 
+		\end{enumerate}
+	\end{itemize}
+\end{frame}
+
+
+
+
+\begin{frame}[allowframebreaks]
+\frametitle{References}
+\bibliographystyle{amsalpha}
+\bibliography{refs.bib}
+\end{frame}
+
+\end{document}
